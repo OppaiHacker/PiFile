@@ -51,6 +51,19 @@ a PDF can become an MP4 and a DOCX can become an EPUB. Every pair is tested.
   - To audio: the raw bytes played as sound.
   - To an image: the raw bytes drawn as pixels.
 
+## PNG to MP3 and back
+
+This picture was converted to sound with `pifile convert -to mp3 holiday.png`.
+The picture is painted into the audio as a spectrogram: time runs left to
+right and pitch goes up. Converting that MP3 back with
+`pifile convert -to png holiday.mp3` brings the picture back.
+
+| holiday.png | [holiday.mp3](https://github.com/OppaiHacker/PiFile/raw/main/docs/holiday.mp3) (10 s, listen) converted back to PNG |
+| --- | --- |
+| <img src="docs/holiday.png" width="400" alt="Original picture: the word holiday, a sun and mountains"> | <img src="docs/holiday-back.png" width="400" alt="The same picture recovered from the MP3 spectrogram"> |
+
+Both steps take under a second.
+
 ## Install
 
 Linux only. One command:
