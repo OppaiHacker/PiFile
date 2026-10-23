@@ -239,7 +239,34 @@ func formatOf(p string) string {
 	if s := sniff(p); known(s) {
 		return s
 	}
+	if s := probe(p); s != "" {
+		return s
+	}
 	return ext(p)
+}
+
+// probe asks the tools themselves whether they can read a file file(1) does not
+// know, and names a format of that kind so routing picks the right tool.
+// ffmpeg, ImageMagick and libarchive all detect the real format from content.
+func probe(p string) string {
+	if available("ffprobe") {
+		out, _ := exec.Command("ffprobe", "-v", "error", "-show_entries", "stream=codec_type:format=format_name", "-of", "default=nw=1:nk=1", p).Output()
+		s := string(out)
+		image := strings.Contains(s, "image2") || strings.Contains(s, "_pipe")
+		switch {
+		case strings.Contains(s, "video") && !image:
+			return "mkv"
+		case strings.Contains(s, "audio"):
+			return "wav"
+		}
+	}
+	if available("magick") && exec.Command("magick", "identify", "-ping", p+"[0]").Run() == nil {
+		return "tiff"
+	}
+	if available("bsdtar") && exec.Command("bsdtar", "-tf", p).Run() == nil {
+		return "tar"
+	}
+	return ""
 }
 
 // sniff guesses the format from file content via file(1).
@@ -290,7 +317,7 @@ func convert(ctx context.Context, in, to string, o opts) (string, error) {
 	cur, from := in, ext(in)
 	if !known(from) {
 		// Missing or wrong extension: trust the content instead.
-		if s := sniff(in); known(s) {
+		if s := formatOf(in); s != from && known(s) {
 			abs, _ := filepath.Abs(in)
 			cur, from = filepath.Join(tmp, "src."+s), s
 			if err := os.Symlink(abs, cur); err != nil {
@@ -455,7 +482,7 @@ func runFFmpeg(ctx context.Context, in, out string, o opts) error {
 	base := append(slices.Clone(pre), "-i", in)
 
 	// Remux without re-encoding when possible: orders of magnitude faster.
-	if isVideo(from) && isVideo(to) && o.quality == 0 && o.size == 0 && to != "mpg" {
+	if isVideo(from) && isVideo(to) && o.quality == 0 && o.size == 0 && to != "mpg" && playable(ctx, in) {
 		if sh(ctx, "ffmpeg", append(base, "-map", "0", "-c", "copy", out)...) == nil {
 			return nil
 		}
@@ -517,6 +544,22 @@ func runFFmpeg(ctx context.Context, in, out string, o opts) error {
 		args = append(args, "-crf", strconv.Itoa(51-o.quality*51/100))
 	}
 	return sh(ctx, "ffmpeg", append(append(base, args...), out)...)
+}
+
+// playable reports whether every stream uses a codec common players handle,
+// so copying it into another container gives a file people can actually play.
+func playable(ctx context.Context, in string) bool {
+	out, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "stream=codec_name", "-of", "csv=p=0", in).Output()
+	if err != nil {
+		return false
+	}
+	common := []string{"h264", "hevc", "av1", "vp8", "vp9", "mpeg4", "aac", "mp3", "opus", "vorbis", "flac", "ac3", "eac3", "subrip", "ass", "webvtt", "mov_text"}
+	for _, c := range strings.Fields(string(out)) {
+		if !slices.Contains(common, strings.TrimSuffix(c, ",")) {
+			return false
+		}
+	}
+	return true
 }
 
 func gsImage(ctx context.Context, in, out string, o opts, extra ...string) error {

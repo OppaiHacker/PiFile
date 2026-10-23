@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -86,5 +87,42 @@ func TestAnyToAny(t *testing.T) {
 	}
 	if left, _ := filepath.Glob(filepath.Join(dir, ".pifile-*")); len(left) > 0 {
 		t.Errorf("temp dirs left: %v", left)
+	}
+}
+
+// Formats neither the extension nor file(1) recognise still convert for real,
+// because ffmpeg, ImageMagick and libarchive are asked whether they can read them.
+func TestProbedFormats(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	mk := func(name string, args ...string) string {
+		p := filepath.Join(dir, name)
+		if out, err := exec.Command(args[0], append(args[1:], p)...).CombinedOutput(); err != nil {
+			t.Skipf("%s: %v %s", name, err, out)
+		}
+		return p
+	}
+	clip := mk("clip.qqq", "ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=d=1:s=320x240", "-c:v", "ffv1", "-f", "nut")
+	voc := mk("sound.qqq", "ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "sine=d=1", "-f", "voc")
+	sgi := filepath.Join(dir, "img.qqq")
+	if err := exec.Command("magick", "-size", "64x64", "plasma:", "sgi:"+sgi).Run(); err != nil {
+		t.Skip(err)
+	}
+	for _, c := range []struct{ in, to, want string }{{clip, "mp4", "mkv"}, {voc, "mp3", "wav"}, {sgi, "png", ""}} {
+		if c.want != "" && formatOf(c.in) != c.want {
+			t.Errorf("%s: formatOf = %q, want %q", c.in, formatOf(c.in), c.want)
+		}
+		out, err := convert(ctx, c.in, c.to, opts{})
+		if err != nil {
+			t.Errorf("%s -> %s: %v", c.in, c.to, err)
+			continue
+		}
+		if c.to == "png" {
+			if err := exec.Command("magick", "identify", out).Run(); err != nil {
+				t.Errorf("%s: not an image", out)
+			}
+		} else if d, _ := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", out).Output(); strings.TrimSpace(string(d)) == "" {
+			t.Errorf("%s: no duration", out)
+		}
 	}
 }

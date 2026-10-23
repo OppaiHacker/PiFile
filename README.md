@@ -45,7 +45,11 @@ a PDF can become an MP4 and a DOCX can become an EPUB. Every pair is tested.
   - Originals are never touched.
   - Outputs never overwrite anything: a second run gives `name (2).ext`.
   - Unfinished files never appear next to your files.
-- **Unknown files still convert.**
+- **Files with odd or missing extensions.** When neither the extension nor
+  `file(1)` knows a file, PiFile asks FFmpeg, ImageMagick and libarchive
+  whether they can read it. That covers several hundred more video, audio,
+  image and archive formats, which then convert for real.
+- **Unknown files still convert.** For files no tool can read:
   - To a document: a report with the file type, size, hex dump and all
     readable strings.
   - To audio: the raw bytes played as sound.
