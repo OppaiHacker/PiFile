@@ -30,6 +30,7 @@ const usage = `pifile: convert, join, pack and unpack files
   pifile engines                   download LibreOffice, pandoc and calibre (no root) for full-quality documents
   pifile install [FM...]           add "Convert…" to file managers (default: every installed one;
                                    nautilus dolphin thunar nemo caja pcmanfm pcmanfm-qt)
+  pifile uninstall                 remove pifile, its engines and every file manager entry
 
 Special -to values: compress (PDF), extract (archives).
 
@@ -107,6 +108,8 @@ func main() {
 		err = installEngines(ctx)
 	case "install":
 		err = install(files)
+	case "uninstall":
+		err = uninstall()
 	default:
 		fmt.Print(usage)
 		os.Exit(2)
@@ -485,6 +488,80 @@ Exec=%s pick %%F
 		}
 		fmt.Printf("%s: added %q (restart it to see it)\n", fm, name)
 	}
+	return nil
+}
+
+// uninstall removes everything install.sh and install put on the system.
+func uninstall() error {
+	home, _ := os.UserHomeDir()
+	const name = "Convert…"
+	paths := []string{
+		filepath.Join(home, ".local/share/nautilus/scripts", name),
+		filepath.Join(home, ".local/share/kio/servicemenus/pifile.desktop"),
+		filepath.Join(home, ".local/share/nemo/actions/pifile.nemo_action"),
+		filepath.Join(home, ".config/caja/scripts", name),
+		filepath.Join(home, ".local/share/file-manager/actions/pifile.desktop"),
+		filepath.Dir(engineDir()), // ~/.local/share/pifile
+	}
+	for _, p := range paths {
+		if _, err := os.Lstat(p); err == nil {
+			if err := os.RemoveAll(p); err != nil {
+				return err
+			}
+			fmt.Println("removed", p)
+		}
+	}
+	accels := filepath.Join(home, ".config/nautilus/scripts-accels")
+	if b, err := os.ReadFile(accels); err == nil {
+		var keep []string
+		for _, l := range strings.SplitAfter(string(b), "\n") {
+			if !strings.Contains(l, name) {
+				keep = append(keep, l)
+			}
+		}
+		os.WriteFile(accels, []byte(strings.Join(keep, "")), 0o644)
+	}
+	uca := filepath.Join(home, ".config/Thunar/uca.xml")
+	if b, err := os.ReadFile(uca); err == nil {
+		s := string(b)
+		if i := strings.Index(s, "<unique-id>pifile-convert</unique-id>"); i >= 0 {
+			start := strings.LastIndex(s[:i], "<action>")
+			end := strings.Index(s[i:], "</action>\n")
+			if start >= 0 && end >= 0 {
+				os.WriteFile(uca, []byte(s[:start]+s[i+end+len("</action>\n"):]), 0o644)
+				fmt.Println("removed Thunar action")
+			}
+		}
+	}
+	// The ImageMagick 6 shim install.sh writes on Debian/Ubuntu.
+	shim := filepath.Join(home, ".local/bin/magick")
+	if b, err := os.ReadFile(shim); err == nil && string(b) == "#!/bin/sh\nexec convert \"$@\"\n" {
+		os.Remove(shim)
+	}
+	// The Nautilus extension lives in a system directory.
+	dirs := []string{"/usr/lib/nautilus/extensions-4", "/usr/lib64/nautilus/extensions-4", "/usr/lib/x86_64-linux-gnu/nautilus/extensions-4"}
+	if out, err := exec.Command("pkg-config", "--variable=extensiondir", "libnautilus-extension-4").Output(); err == nil {
+		dirs = append([]string{strings.TrimSpace(string(out))}, dirs...)
+	}
+	for _, d := range dirs {
+		so := filepath.Join(d, "libpifile-nautilus.so")
+		if _, err := os.Stat(so); err == nil {
+			fmt.Println("removing", so, "(needs sudo)")
+			cmd := exec.Command("sudo", "rm", "-f", so)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintln(os.Stderr, "could not remove it:", err)
+			}
+			break
+		}
+	}
+	if exe, err := os.Executable(); err == nil {
+		exe, _ = filepath.EvalSymlinks(exe)
+		if err := os.Remove(exe); err == nil {
+			fmt.Println("removed", exe)
+		}
+	}
+	fmt.Println("PiFile is uninstalled. Restart your file manager (nautilus -q) to drop the menu entries.")
 	return nil
 }
 

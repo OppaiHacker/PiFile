@@ -53,8 +53,13 @@ a PDF can become an MP4 and a DOCX can become an EPUB. Every pair is tested.
 
 ## Install
 
-Linux only. The installer detects your distribution and your file managers
-and asks before changing anything:
+Linux only. One command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/OppaiHacker/PiFile/main/install.sh | bash
+```
+
+Or from a clone:
 
 ```sh
 git clone https://github.com/OppaiHacker/PiFile.git
@@ -62,19 +67,24 @@ cd PiFile
 ./install.sh        # add -y to accept every default
 ```
 
-It asks all questions up front. Then it:
+The installer detects your distribution and your file managers. It asks all
+questions up front, then:
 
 1. installs the dependencies with your package manager (pacman, apt, dnf or
    zypper);
-2. builds `pifile` into `~/.local/bin`;
+2. downloads the prebuilt `pifile` from the latest release into
+   `~/.local/bin`, checks its SHA-256 and makes sure it runs on your system;
 3. adds **Convert…** to the file managers you pick;
-4. optionally builds the Nautilus middle-click extension;
+4. optionally installs the Nautilus middle-click extension;
 5. optionally downloads LibreOffice, pandoc and calibre (about 700 MB, no
    root, stored in `~/.local/share/pifile/engines`) for full-fidelity
    documents.
 
-Steps that do not depend on each other run in parallel. The first build
-compiles the GTK bindings and takes a few minutes. Later builds take seconds.
+With the prebuilt release the whole install takes well under a minute.
+
+PiFile needs GLib 2.88 and GTK 4.22 or newer: Arch, Fedora 44, Ubuntu 26.04,
+Debian 14 or later. On ARM the installer builds from source instead. The
+first build compiles the GTK bindings and takes several minutes.
 
 ### Supported file managers
 
@@ -203,6 +213,7 @@ the following, as plain text without images or styling:
 
 ```sh
 go build -o pifile .                        # needs gtk4 and gtk4-layer-shell headers
+docker run --rm -v "$PWD:/src" ubuntu:26.04 /src/release/build.sh   # release assets into dist/
 go test .                                   # fast tests, about 10 s
 PIFILE_MATRIX=1 go test -run Matrix .       # every source format to every target, about 35 min
 ```
@@ -222,18 +233,15 @@ It is a small C module that hands the clicked or selected paths to
 
 ## Uninstall
 
-Remove the following:
-- `~/.local/bin/pifile`;
-- `~/.local/share/pifile`;
-- the **Convert…** entries:
-  - `~/.local/share/nautilus/scripts/Convert…`;
-  - `~/.local/share/kio/servicemenus/pifile.desktop`;
-  - `~/.local/share/nemo/actions/pifile.nemo_action`;
-  - `~/.config/caja/scripts/Convert…`;
-  - `~/.local/share/file-manager/actions/pifile.desktop`;
-  - the `pifile-convert` action in `~/.config/Thunar/uca.xml`;
-- the Nautilus extension, with root:
-  `sudo rm "$(pkg-config --variable=extensiondir libnautilus-extension-4)/libpifile-nautilus.so"`.
+```sh
+pifile uninstall
+```
+
+This removes the binary, the downloaded engines and every **Convert…** entry.
+Your own Thunar actions and Nautilus shortcuts stay untouched. The Nautilus
+extension sits in a system folder, so its removal asks for your sudo
+password. Packages installed by your package manager stay, because other
+programs may use them.
 
 ## License
 

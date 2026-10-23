@@ -1,3 +1,4 @@
 /pifile
 *.so
 *.test
+dist/
